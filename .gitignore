@@ -106,3 +106,5 @@ frontend/.pnp.js*
 frontend/.DS_Store
 frontend/Thumbs.db
 frontend/coverage
+
+*.pyc
