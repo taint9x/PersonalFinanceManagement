@@ -1,9 +1,13 @@
 .env
 *.env.local
+*.env*
+
+*.DS_Store
 
 # Backend
 backend/.env*
 backend/__pycache__/
+**/__pycache__/
 backend/*.py[cod]
 backend/*$py.class
 backend/*.so

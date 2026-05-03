@@ -26,8 +26,14 @@ Open `.env` in a text editor and fill in the following:
 ## Step 3: Start the Application
 Run the full stack in detached mode:
 ```bash
-docker compose up -d
+docker compose up -p prod_personalfinance  -d --build
 ```
+
+*DEV*
+```bash
+docker compose -f docker-compose.dev.yml -p dev_personalfinance up -d --build
+```
+
 The first startup will take about 60-90 seconds as it builds images and runs initial migrations.
 
 ## Step 4: Verify Status

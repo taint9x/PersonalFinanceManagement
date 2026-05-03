@@ -21,4 +21,8 @@ python seed.py
 
 # Start the application
 echo "Starting the application..."
-exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+if [ $# -eq 0 ]; then
+    exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+else
+    exec "$@"
+fi
