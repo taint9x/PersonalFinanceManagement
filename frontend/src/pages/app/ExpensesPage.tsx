@@ -45,9 +45,9 @@ const schema = z.object({
   amount: z.coerce.number().positive('Phải > 0'),
   frequency: z.enum(['one_time', 'weekly', 'monthly', 'yearly']),
   billing_day: z.preprocess((val) => (val === '' || val === undefined ? undefined : Number(val)), z.number().min(1).max(31).optional()),
-  transaction_date: z.preprocess((val) => (val === '' ? null : val), z.string().nullable().optional()),
-  start_date: z.preprocess((val) => (val === '' ? null : val), z.string().nullable().optional()),
-  end_date: z.preprocess((val) => (val === '' ? null : val), z.string().nullable().optional()),
+  transaction_date: z.preprocess((val) => (val === '' ? undefined : val), z.string().optional()),
+  start_date: z.preprocess((val) => (val === '' ? undefined : val), z.string().optional()),
+  end_date: z.preprocess((val) => (val === '' ? undefined : val), z.string().optional()),
   is_active: z.boolean().default(true),
   notes: z.string().optional(),
 })
@@ -124,10 +124,10 @@ export default function ExpensesPage() {
 
   const onSubmit = (data: FormData) => {
     if (data.frequency === 'one_time') {
-      data.start_date = null
-      data.end_date = null
+      data.start_date = undefined
+      data.end_date = undefined
     } else {
-      data.transaction_date = null
+      data.transaction_date = undefined
     }
 
     if (editExpense) {

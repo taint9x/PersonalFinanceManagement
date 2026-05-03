@@ -35,8 +35,8 @@ const schema = z.object({
   interest_rate: z.coerce.number().min(0),
   monthly_payment: z.coerce.number().min(0),
   due_day: z.coerce.number().min(1).max(31),
-  start_date: z.preprocess((val) => (val === '' ? null : val), z.string().nullable().optional()),
-  end_date: z.preprocess((val) => (val === '' ? null : val), z.string().nullable().optional()),
+  start_date: z.preprocess((val) => (val === '' ? undefined : val), z.string().optional()),
+  end_date: z.preprocess((val) => (val === '' ? undefined : val), z.string().optional()),
   status: z.enum(['active', 'paid_off', 'paused']).default('active'),
   notes: z.string().optional(),
 })
