@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Báo Cáo Tài Chính</title>
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; margin: 0; padding: 20px; color: #1a202c; }
+  .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+  .header { background: linear-gradient(135deg, #1e40af, #3b82f6); color: white; padding: 28px 32px; text-align: center; }
+  .header h1 { margin: 0; font-size: 22px; font-weight: 700; }
+  .header p { margin: 6px 0 0; font-size: 14px; opacity: 0.85; }
+  .body { padding: 28px 32px; }
+  .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+  .stat-card { border-radius: 8px; padding: 14px 16px; }
+  .stat-card.income { background: #f0fdf4; border-left: 4px solid #22c55e; }
+  .stat-card.expense { background: #fff1f2; border-left: 4px solid #ef4444; }
+  .stat-card.debt { background: #fff7ed; border-left: 4px solid #f97316; }
+  .stat-card.cashflow { background: #eff6ff; border-left: 4px solid #3b82f6; }
+  .stat-label { font-size: 12px; color: #6b7280; margin-bottom: 4px; }
+  .stat-value { font-size: 18px; font-weight: 700; color: #111827; }
+  .stat-value.positive { color: #16a34a; }
+  .stat-value.negative { color: #dc2626; }
+  .section { margin-bottom: 24px; }
+  .section-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; margin-bottom: 12px; }
+  .item-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #f3f4f6; }
+  .item-row:last-child { border-bottom: none; }
+  .item-name { font-size: 14px; font-weight: 500; color: #111827; }
+  .item-category { font-size: 12px; color: #9ca3af; }
+  .item-right { text-align: right; }
+  .item-amount { font-size: 14px; font-weight: 600; color: #374151; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; }
+  .badge.paid { background: #dcfce7; color: #16a34a; }
+  .badge.unpaid { background: #fee2e2; color: #dc2626; }
+  .footer { background: #f9fafb; text-align: center; padding: 16px 32px; font-size: 12px; color: #9ca3af; }
+  .paid-summary { background: #f0fdf4; border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; font-size: 14px; color: #15803d; font-weight: 500; text-align: center; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>📅 Báo Cáo Tài Chính</h1>
+    <p>{{ period }}</p>
+  </div>
+
+  <div class="body">
+    <!-- Summary Grid -->
+    <div class="summary-grid">
+      <div class="stat-card income">
+        <div class="stat-label">💰 Tổng Thu Nhập</div>
+        <div class="stat-value positive">{{ fmt_vnd(summary.total_income) }}</div>
+      </div>
+      <div class="stat-card expense">
+        <div class="stat-label">💸 Tổng Chi Tiêu</div>
+        <div class="stat-value">{{ fmt_vnd(summary.total_expense) }}</div>
+      </div>
+      <div class="stat-card debt">
+        <div class="stat-label">💳 Tổng Trả Nợ</div>
+        <div class="stat-value">{{ fmt_vnd(summary.total_debt_payment) }}</div>
+      </div>
+      <div class="stat-card cashflow">
+        <div class="stat-label">📊 Dòng Tiền Ròng</div>
+        <div class="stat-value {% if summary.net_cashflow.startswith('-') %}negative{% else %}positive{% endif %}">
+          {{ fmt_vnd(summary.net_cashflow) }}
+        </div>
+      </div>
+    </div>
+
+    <!-- Paid Summary -->
+    <div class="paid-summary">
+      ✅ Đã xử lý: <strong>{{ summary.paid_count }}</strong> / {{ summary.paid_count + summary.unpaid_count }} khoản
+    </div>
+
+    <!-- Top Expenses -->
+    {% if top_expenses %}
+    <div class="section">
+      <div class="section-title">💸 Top Chi Tiêu</div>
+      {% for item in top_expenses %}
+      <div class="item-row">
+        <div>
+          <div class="item-name">{{ item.name }}</div>
+          <div class="item-category">{{ item.category }} · {{ item.frequency }}</div>
+        </div>
+        <div class="item-right">
+          <div class="item-amount">{{ fmt_vnd(item.amount) }}</div>
+          <span class="badge {% if item.is_paid %}paid{% else %}unpaid{% endif %}">
+            {% if item.is_paid %}✓ Đã chi{% else %}Chưa chi{% endif %}
+          </span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Debts -->
+    {% if debts %}
+    <div class="section">
+      <div class="section-title">💳 Nợ Cần Trả</div>
+      {% for item in debts %}
+      <div class="item-row">
+        <div>
+          <div class="item-name">{{ item.name }}</div>
+          <div class="item-category">{{ item.category }}{% if item.due_day %} · Ngày {{ item.due_day }}{% endif %}</div>
+        </div>
+        <div class="item-right">
+          <div class="item-amount">{{ fmt_vnd(item.amount) }}</div>
+          <span class="badge {% if item.is_paid %}paid{% else %}unpaid{% endif %}">
+            {% if item.is_paid %}✓ Đã trả{% else %}Chưa trả{% endif %}
+          </span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Incomes -->
+    {% if incomes %}
+    <div class="section">
+      <div class="section-title">💰 Thu Nhập</div>
+      {% for item in incomes %}
+      <div class="item-row">
+        <div>
+          <div class="item-name">{{ item.name }}</div>
+          <div class="item-category">{{ item.category }} · {{ item.frequency }}</div>
+        </div>
+        <div class="item-right">
+          <div class="item-amount">{{ fmt_vnd(item.amount) }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="footer">
+    Báo cáo được tạo tự động bởi FinyTrack &middot; Đừng trả lời email này
+  </div>
+</div>
+</body>
+</html>

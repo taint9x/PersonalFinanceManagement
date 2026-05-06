@@ -10,6 +10,8 @@ import {
   ChevronLeft,
   ChevronRight,
   User,
+  CalendarRange,
+  Bell,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
@@ -19,10 +21,15 @@ import { toast } from '@/hooks/useToast'
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/app/dashboard' },
+  { icon: CalendarRange, label: 'Tổng Quan Tháng', href: '/app/overview' },
   { icon: CreditCard, label: 'Khoản Nợ', href: '/app/debts' },
   { icon: ShoppingCart, label: 'Chi Tiêu', href: '/app/expenses' },
   { icon: Wallet, label: 'Thu Nhập', href: '/app/incomes' },
   { icon: Bot, label: 'Phân Tích AI', href: '/app/ai' },
+]
+
+const bottomNavItems = [
+  { icon: Bell, label: 'Lịch Sử Báo Cáo', href: '/app/notifications' },
 ]
 
 export function Sidebar() {
@@ -85,6 +92,31 @@ export function Sidebar() {
             </Link>
           )
         })}
+
+        {/* Bottom nav items — shown above logout */}
+        <div className="mt-auto">
+          {bottomNavItems.map((item) => {
+            const isActive = location.pathname === item.href
+            return (
+              <Link
+                key={item.href}
+                to={item.href}
+                id={`sidebar-nav-${item.href.split('/').pop()}`}
+                className={cn(
+                  'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150',
+                  isActive
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                  !sidebarOpen && 'justify-center px-2'
+                )}
+                title={!sidebarOpen ? item.label : undefined}
+              >
+                <item.icon className="h-5 w-5 flex-shrink-0" />
+                {sidebarOpen && <span>{item.label}</span>}
+              </Link>
+            )
+          })}
+        </div>
       </nav>
 
       {/* User & Logout */}

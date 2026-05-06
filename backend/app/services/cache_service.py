@@ -35,6 +35,7 @@ class CacheService:
         """Invalidate all dashboard-related cache keys for a user."""
         await self.delete_pattern(f"dashboard_summary:{user_id}:*")
         await self.delete(f"monthly_trend:{user_id}")
+        await self.delete_pattern(f"monthly_overview:{user_id}:*")
 
 
 async def get_redis() -> aioredis.Redis:
