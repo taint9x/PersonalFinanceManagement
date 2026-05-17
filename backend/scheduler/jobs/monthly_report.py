@@ -14,7 +14,7 @@ from app.core.database import get_db
 from app.models.user import User
 from app.services.notification_service import send_monthly_report
 
-logger = logging.getLogger("scheduler.jobs.monthly_report")
+logger = logging.getLogger("app.scheduler.jobs.monthly_report")
 
 
 async def _run_for_all_users(period_key: str) -> None:

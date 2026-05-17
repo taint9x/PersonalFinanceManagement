@@ -9,6 +9,12 @@ export interface OverviewItem {
   amount: string          // Decimal as string from backend
   frequency: string
   category: string
+  transaction_date?: string | null
+  start_date?: string | null
+  billing_day?: number | null
+  payment_day?: number | null
+  borrow_date?: string | null
+  created_at?: string | null
 
   // Debt-specific
   due_day?: number

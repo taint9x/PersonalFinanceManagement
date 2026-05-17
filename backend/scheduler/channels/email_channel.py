@@ -15,7 +15,7 @@ from jinja2 import Environment, FileSystemLoader
 from app.core.config import settings
 from app.schemas.monthly_overview import MonthlyOverviewResponse
 
-logger = logging.getLogger("scheduler.channels.email")
+logger = logging.getLogger("app.scheduler.channels.email")
 
 _TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 _jinja_env = Environment(

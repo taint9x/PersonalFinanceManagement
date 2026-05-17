@@ -8,6 +8,16 @@ from app.core.config import settings
 from app.api.v1 import auth, debts, expenses, incomes, transactions, dashboard, ai_analysis
 from app.api.v1 import monthly_overview, notifications, personal_loans
 
+import logging
+import sys
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s:     %(name)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+
+logging.getLogger("app").setLevel(logging.INFO)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

@@ -147,7 +147,8 @@ Migrations run **automatically** on every container startup via `entrypoint.sh`:
 
 ```bash
 # Start the full stack — migrations run before uvicorn starts
-docker compose up -p prod_personalfinance -d --build
+docker compose -f docker-compose.yml -p prod_personalfinance up -d --build
+
 ```
 
 To run migrations manually on a running container:

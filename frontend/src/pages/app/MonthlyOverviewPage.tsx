@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { CalendarRange, HandCoins } from 'lucide-react'
 import { MonthPicker } from '@/components/common/MonthPicker'
@@ -10,6 +10,12 @@ import { OverviewItemRow } from '@/components/overview/OverviewItemRow'
 import { ExportButton } from '@/components/overview/ExportButton'
 import { PersonalLoanPopup } from '@/components/overview/PersonalLoanPopup'
 import { Button } from '@/components/ui/button'
+import { ViewToggle, type ViewMode } from '@/components/common/ViewToggle'
+import { GroupedOneTimeList } from '@/components/common/GroupedOneTimeList'
+import { MonthCalendar } from '@/components/common/MonthCalendar'
+import { CalendarHoverPopup } from '@/components/common/CalendarHoverPopup'
+import { CalendarDayDialog } from '@/components/common/CalendarDayDialog'
+import { buildDayMap } from '@/utils/calendarMapping'
 import type { OverviewItem } from '@/types/monthlyOverview'
 
 type FilterType = 'all' | 'debt' | 'expense' | 'income'
@@ -33,6 +39,15 @@ export default function MonthlyOverviewPage() {
   const { selectedPeriod } = useUIStore()
   const [activeFilter, setActiveFilter] = useState<FilterType>('all')
   const [personalLoanPopupOpen, setPersonalLoanPopupOpen] = useState(false)
+  const [view, setView] = useState<ViewMode>('list')
+  const [hoverDay, setHoverDay] = useState<number | null>(null)
+  const [hoverAnchor, setHoverAnchor] = useState<HTMLElement | null>(null)
+  const [hoverVisible, setHoverVisible] = useState(false)
+  const [clickDay, setClickDay] = useState<number | null>(null)
+  const [isClickPopupOpen, setIsClickPopupOpen] = useState(false)
+  const hoverShowTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hoverHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [calendarYear, calendarMonth] = selectedPeriod.split('-').map(Number)
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['monthly-overview', selectedPeriod, 'all'],
@@ -62,6 +77,18 @@ export default function MonthlyOverviewPage() {
         }))
         .filter((g) => g.items.length > 0)
     : [{ type: activeFilter, items: filteredItems }]
+  const dayMap = useMemo(
+    () => buildDayMap(filteredItems, calendarYear, calendarMonth),
+    [filteredItems, calendarYear, calendarMonth]
+  )
+  const hoverItems = hoverDay ? (dayMap[hoverDay] ?? []) : []
+  const clickItems = clickDay ? (dayMap[clickDay] ?? []) : []
+  const hoverDate = hoverDay
+    ? `${selectedPeriod}-${String(hoverDay).padStart(2, '0')}`
+    : `${selectedPeriod}-01`
+  const clickDate = clickDay
+    ? `${selectedPeriod}-${String(clickDay).padStart(2, '0')}`
+    : `${selectedPeriod}-01`
 
   const paidCount = data?.summary.paid_count ?? 0
   const unpaidCount = data?.summary.unpaid_count ?? 0
@@ -76,6 +103,43 @@ export default function MonthlyOverviewPage() {
 
   // The button shows only if there are loans available (including not-yet-added ones)
   const showPersonalLoanBtn = availableLoans.length > 0
+
+  useEffect(() => {
+    return () => {
+      if (hoverShowTimer.current) clearTimeout(hoverShowTimer.current)
+      if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
+    }
+  }, [])
+
+  const clearHoverHideTimer = () => {
+    if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
+  }
+
+  const hideHover = () => {
+    if (hoverShowTimer.current) clearTimeout(hoverShowTimer.current)
+    hoverHideTimer.current = setTimeout(() => {
+      setHoverVisible(false)
+      setHoverDay(null)
+      setHoverAnchor(null)
+    }, 200)
+  }
+
+  const handleDayHover = (day: number, _items: OverviewItem[], anchorEl: HTMLElement) => {
+    if (isClickPopupOpen) return
+    clearHoverHideTimer()
+    if (hoverShowTimer.current) clearTimeout(hoverShowTimer.current)
+    hoverShowTimer.current = setTimeout(() => {
+      setHoverDay(day)
+      setHoverAnchor(anchorEl)
+      setHoverVisible(true)
+    }, 150)
+  }
+
+  const handleDayClick = (day: number) => {
+    setHoverVisible(false)
+    setClickDay(day)
+    setIsClickPopupOpen(true)
+  }
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -116,6 +180,7 @@ export default function MonthlyOverviewPage() {
           )}
         </p>
         <div className="flex items-center gap-2">
+          <ViewToggle view={view} onChange={setView} />
           {showPersonalLoanBtn && (
             <Button
               variant="outline"
@@ -155,14 +220,51 @@ export default function MonthlyOverviewPage() {
             Hãy thêm khoản thu chi trong các tab tương ứng.
           </p>
         </div>
+      ) : view === 'calendar' ? (
+        <>
+          <MonthCalendar
+            year={calendarYear}
+            month={calendarMonth}
+            dayMap={dayMap}
+            mode="overview"
+            onDayClick={handleDayClick}
+            onDayHover={handleDayHover}
+            onDayHoverEnd={hideHover}
+          />
+          <CalendarHoverPopup
+            items={hoverItems}
+            date={hoverDate}
+            anchorEl={hoverAnchor}
+            visible={hoverVisible && !isClickPopupOpen}
+            mode="overview"
+            onMouseEnter={clearHoverHideTimer}
+            onMouseLeave={hideHover}
+          />
+          <CalendarDayDialog
+            items={clickItems}
+            date={clickDate}
+            open={isClickPopupOpen}
+            onClose={() => setIsClickPopupOpen(false)}
+            mode="overview"
+            renderItem={(item, index) => (
+              <OverviewItemRow key={`${item.id}-${index}`} item={item} period={selectedPeriod} />
+            )}
+          />
+        </>
       ) : (
         <div className="space-y-3">
           {groups.map(({ type, items }) => (
             <div key={type} className="space-y-2">
               {activeFilter === 'all' && <SectionHeader label={SECTION_LABELS[type]} />}
-              {items.map((item) => (
+              {items.filter((item) => item.frequency !== 'one_time').map((item) => (
                 <OverviewItemRow key={item.id} item={item} period={selectedPeriod} />
               ))}
+              <GroupedOneTimeList
+                items={items.filter((item) => item.frequency === 'one_time')}
+                renderItem={(item) => (
+                  <OverviewItemRow key={item.id} item={item} period={selectedPeriod} />
+                )}
+              />
             </div>
           ))}
 

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { User, Pencil, CheckCircle2, RotateCcw, AlertTriangle } from 'lucide-react'
+import { User, Pencil, CheckCircle2, RotateCcw, AlertTriangle, HandCoins } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatVND } from '@/utils/currency'
 import { Button } from '@/components/ui/button'
@@ -35,7 +35,8 @@ function getStatusBadge(loan: Debt) {
     }
   }
   return (
-    <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground border border-border">
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-400 border border-amber-500/40">
+      <AlertTriangle className="h-3 w-3" />
       Chưa trả
     </span>
   )
@@ -154,10 +155,10 @@ export function PersonalLoanCard({ loan, onEdit }: Props) {
                     size="sm"
                     onClick={() => setConfirmOpen(true)}
                     id={`personal-loan-mark-paid-${loan.id}`}
-                    className="h-7 text-xs border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
+                    className="h-7 text-xs border-sky-500/40 text-sky-400 hover:bg-sky-500/10 hover:text-sky-300"
                   >
-                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                    Đã Trả Hết
+                    <HandCoins className="h-3.5 w-3.5 mr-1" />
+                    Thực hiện trả
                   </Button>
                 )}
               </div>
@@ -169,9 +170,9 @@ export function PersonalLoanCard({ loan, onEdit }: Props) {
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title="Xác nhận đã trả hết?"
-        description="Xác nhận đã trả hết khoản vay này? Hành động này sẽ đánh dấu khoản vay là đã thanh toán."
-        confirmText="Đã Trả Hết"
+        title="Xác nhận thực hiện trả?"
+        description="Xác nhận bạn muốn ghi nhận khoản vay này đã được trả hết. Sau khi xác nhận, khoản vay sẽ chuyển sang trạng thái đã thanh toán."
+        confirmText="Thực hiện trả"
         loading={markPaidMutation.isPending}
         onConfirm={() => markPaidMutation.mutate()}
       />

@@ -10,7 +10,7 @@ import httpx
 from app.core.config import settings
 from app.schemas.monthly_overview import MonthlyOverviewResponse
 
-logger = logging.getLogger("scheduler.channels.telegram")
+logger = logging.getLogger("app.scheduler.channels.telegram")
 
 
 def _fmt_vnd(value: str) -> str:

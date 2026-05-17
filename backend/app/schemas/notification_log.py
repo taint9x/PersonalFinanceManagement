@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -14,7 +15,7 @@ class NotificationLogRead(BaseModel):
     status: NotificationStatus
     attempt_count: int
     error_message: Optional[str] = None
-    sent_at: Optional[str] = None
-    created_at: str
+    sent_at: Optional[datetime] = None
+    created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -62,17 +62,21 @@ async def send_monthly_report(
     email_success = False
     MAX_RETRIES = 3
 
-    while email_attempt <= MAX_RETRIES:
-        try:
-            await send_email_report(overview, period_key, str(user.email or ""))
-            email_success = True
-            break
-        except Exception as exc:
-            email_error = str(exc)
-            email_attempt += 1
-            if email_attempt <= MAX_RETRIES:
-                import asyncio
-                await asyncio.sleep(5)  # 5-second retry (300s in production via scheduler)
+    if user.email:
+        while email_attempt <= MAX_RETRIES:
+            try:
+                await send_email_report(overview, period_key, str(user.email or ""))
+                email_success = True
+                break
+            except Exception as exc:
+                email_error = str(exc)
+                email_attempt += 1
+                if email_attempt <= MAX_RETRIES:
+                    import asyncio
+                    await asyncio.sleep(5)  # 5-second retry (300s in production via scheduler)
+
+    else:
+        email_error = "You have no email configured"
 
     await _log_notification(
         db=db,

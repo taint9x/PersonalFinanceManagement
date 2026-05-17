@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -17,9 +17,15 @@ import { TypeBadge } from '@/components/common/StatusBadge'
 import { CurrencyDisplay } from '@/components/common/CurrencyDisplay'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmptyState } from '@/components/common/EmptyState'
+import { ViewToggle, type ViewMode } from '@/components/common/ViewToggle'
+import { GroupedOneTimeList } from '@/components/common/GroupedOneTimeList'
+import { MonthCalendar } from '@/components/common/MonthCalendar'
+import { CalendarHoverPopup } from '@/components/common/CalendarHoverPopup'
+import { CalendarDayDialog } from '@/components/common/CalendarDayDialog'
 import { expensesApi } from '@/api/expenses'
 import { useUIStore } from '@/store/uiStore'
 import { toast } from '@/hooks/useToast'
+import { buildDayMap } from '@/utils/calendarMapping'
 import type { Expense, ExpenseType, Frequency } from '@/types'
 
 const expenseTypeLabels: Record<ExpenseType, { label: string; variant: 'blue' | 'purple' | 'teal' | 'green' | 'orange' | 'rose' | 'slate' }> = {
@@ -58,21 +64,49 @@ export default function ExpensesPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editExpense, setEditExpense] = useState<Expense | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
-  const [formFrequency, setFormFrequency] = useState<Frequency>('monthly')
+  const [formFrequency, setFormFrequency] = useState<Frequency>('one_time')
+  const [view, setView] = useState<ViewMode>('list')
+  const [hoverDay, setHoverDay] = useState<number | null>(null)
+  const [hoverAnchor, setHoverAnchor] = useState<HTMLElement | null>(null)
+  const [hoverVisible, setHoverVisible] = useState(false)
+  const [clickDay, setClickDay] = useState<number | null>(null)
+  const [isClickPopupOpen, setIsClickPopupOpen] = useState(false)
+  const hoverShowTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hoverHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const { selectedPeriod } = useUIStore()
+  const [calendarYear, calendarMonth] = selectedPeriod.split('-').map(Number)
 
-  const { data: expenses = [], isLoading } = useQuery({
+  const { data: expenses = [], isLoading, isError } = useQuery({
     queryKey: ['expenses', selectedPeriod],
     queryFn: () => expensesApi.list({ current_month: selectedPeriod }),
   })
 
   const recurring = expenses.filter((e) => e.frequency !== 'one_time')
   const oneTime = expenses.filter((e) => e.frequency === 'one_time')
+  const dayMap = useMemo(
+    () => buildDayMap(expenses, calendarYear, calendarMonth),
+    [expenses, calendarYear, calendarMonth]
+  )
+  const hoverItems = hoverDay ? (dayMap[hoverDay] ?? []) : []
+  const clickItems = clickDay ? (dayMap[clickDay] ?? []) : []
+  const hoverDate = hoverDay
+    ? `${selectedPeriod}-${String(hoverDay).padStart(2, '0')}`
+    : `${selectedPeriod}-01`
+  const clickDate = clickDay
+    ? `${selectedPeriod}-${String(clickDay).padStart(2, '0')}`
+    : `${selectedPeriod}-01`
+
+  useEffect(() => {
+    return () => {
+      if (hoverShowTimer.current) clearTimeout(hoverShowTimer.current)
+      if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
+    }
+  }, [])
 
   const { register, handleSubmit, reset, setValue, watch, control, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { is_active: true, expense_type: 'other', frequency: 'monthly' },
+    defaultValues: { is_active: true, expense_type: 'other', frequency: 'one_time' },
   })
   const watchFrequency = watch('frequency')
 
@@ -116,9 +150,9 @@ export default function ExpensesPage() {
 
   const openCreate = () => {
     setEditExpense(null)
-    setFormFrequency('monthly')
+    setFormFrequency('one_time')
     const today = new Date().toISOString().split('T')[0]
-    reset({ is_active: true, expense_type: 'other', frequency: 'monthly', transaction_date: today, start_date: today })
+    reset({ is_active: true, expense_type: 'other', frequency: 'one_time', transaction_date: today, start_date: today })
     setDrawerOpen(true)
   }
 
@@ -131,11 +165,40 @@ export default function ExpensesPage() {
     }
 
     if (editExpense) {
-      const { transaction_date, ...updateData } = data
-      updateMutation.mutate({ id: editExpense.id, data: updateData })
+      updateMutation.mutate({ id: editExpense.id, data })
     } else {
       createMutation.mutate(data)
     }
+  }
+
+  const clearHoverHideTimer = () => {
+    if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
+  }
+
+  const hideHover = () => {
+    if (hoverShowTimer.current) clearTimeout(hoverShowTimer.current)
+    hoverHideTimer.current = setTimeout(() => {
+      setHoverVisible(false)
+      setHoverDay(null)
+      setHoverAnchor(null)
+    }, 200)
+  }
+
+  const handleDayHover = (day: number, _items: Expense[], anchorEl: HTMLElement) => {
+    if (isClickPopupOpen) return
+    clearHoverHideTimer()
+    if (hoverShowTimer.current) clearTimeout(hoverShowTimer.current)
+    hoverShowTimer.current = setTimeout(() => {
+      setHoverDay(day)
+      setHoverAnchor(anchorEl)
+      setHoverVisible(true)
+    }, 150)
+  }
+
+  const handleDayClick = (day: number) => {
+    setHoverVisible(false)
+    setClickDay(day)
+    setIsClickPopupOpen(true)
   }
 
   const ExpenseCard = ({ expense }: { expense: Expense }) => {
@@ -200,35 +263,79 @@ export default function ExpensesPage() {
           <h1 className="text-2xl font-bold">Chi Tiêu</h1>
           <p className="text-sm text-muted-foreground">{expenses.length} khoản</p>
         </div>
-        <Button onClick={openCreate} className="gap-2" id="expenses-add-btn">
-          <Plus className="h-4 w-4" /> Thêm Chi Tiêu
-        </Button>
+        <div className="flex items-center gap-2">
+          <ViewToggle view={view} onChange={setView} />
+          <Button onClick={openCreate} className="gap-2" id="expenses-add-btn">
+            <Plus className="h-4 w-4" /> Thêm Chi Tiêu
+          </Button>
+        </div>
       </div>
 
-      <Tabs defaultValue="recurring" id="expenses-tabs">
-        <TabsList>
-          <TabsTrigger value="recurring" id="tab-recurring">Định Kỳ ({recurring.length})</TabsTrigger>
-          <TabsTrigger value="onetime" id="tab-onetime">Một Lần ({oneTime.length})</TabsTrigger>
-        </TabsList>
-        <TabsContent value="recurring" className="mt-4">
-          {isLoading ? (
-            <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="skeleton h-20 rounded-xl" />)}</div>
-          ) : recurring.length === 0 ? (
-            <EmptyState icon={ShoppingCart} title="Chưa có chi tiêu định kỳ" description="Subscription, hóa đơn, chi phí cố định" action={<Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" />Thêm ngay</Button>} />
-          ) : (
-            <div className="space-y-3">{recurring.map((e) => <ExpenseCard key={e.id} expense={e} />)}</div>
-          )}
-        </TabsContent>
-        <TabsContent value="onetime" className="mt-4">
-          {isLoading ? (
-            <div className="space-y-3">{[1, 2].map((i) => <div key={i} className="skeleton h-20 rounded-xl" />)}</div>
-          ) : oneTime.length === 0 ? (
-            <EmptyState icon={ShoppingCart} title="Chưa có chi tiêu một lần" description="Ghi nhận các khoản chi không định kỳ" action={<Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" />Thêm ngay</Button>} />
-          ) : (
-            <div className="space-y-3">{oneTime.map((e) => <ExpenseCard key={e.id} expense={e} />)}</div>
-          )}
-        </TabsContent>
-      </Tabs>
+      {isError && (
+        <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-400">
+          Không thể tải dữ liệu. Vui lòng thử lại.
+        </div>
+      )}
+
+      {view === 'list' ? (
+        <Tabs defaultValue="recurring" id="expenses-tabs">
+          <TabsList>
+            <TabsTrigger value="recurring" id="tab-recurring">Định Kỳ ({recurring.length})</TabsTrigger>
+            <TabsTrigger value="onetime" id="tab-onetime">Một Lần ({oneTime.length})</TabsTrigger>
+          </TabsList>
+          <TabsContent value="recurring" className="mt-4">
+            {isLoading ? (
+              <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="skeleton h-20 rounded-xl" />)}</div>
+            ) : recurring.length === 0 ? (
+              <EmptyState icon={ShoppingCart} title="Chưa có chi tiêu định kỳ" description="Subscription, hóa đơn, chi phí cố định" action={<Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" />Thêm ngay</Button>} />
+            ) : (
+              <div className="space-y-3">{recurring.map((e) => <ExpenseCard key={e.id} expense={e} />)}</div>
+            )}
+          </TabsContent>
+          <TabsContent value="onetime" className="mt-4">
+            {isLoading ? (
+              <div className="space-y-3">{[1, 2].map((i) => <div key={i} className="skeleton h-20 rounded-xl" />)}</div>
+            ) : oneTime.length === 0 ? (
+              <EmptyState icon={ShoppingCart} title="Chưa có chi tiêu một lần" description="Ghi nhận các khoản chi không định kỳ" action={<Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" />Thêm ngay</Button>} />
+            ) : (
+              <GroupedOneTimeList items={oneTime} renderItem={(expense) => <ExpenseCard key={expense.id} expense={expense} />} />
+            )}
+          </TabsContent>
+        </Tabs>
+      ) : isLoading ? (
+        <div className="skeleton h-[520px] rounded-lg" />
+      ) : expenses.length === 0 ? (
+        <EmptyState icon={ShoppingCart} title="Chưa có chi tiêu trong tháng" description="Thêm khoản chi để xem trên lịch" action={<Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" />Thêm ngay</Button>} />
+      ) : (
+        <>
+          <MonthCalendar
+            year={calendarYear}
+            month={calendarMonth}
+            dayMap={dayMap}
+            mode="expense"
+            onDayClick={handleDayClick}
+            onDayHover={handleDayHover}
+            onDayHoverEnd={hideHover}
+          />
+          <CalendarHoverPopup
+            items={hoverItems}
+            date={hoverDate}
+            anchorEl={hoverAnchor}
+            visible={hoverVisible && !isClickPopupOpen}
+            mode="expense"
+            onMouseEnter={clearHoverHideTimer}
+            onMouseLeave={hideHover}
+          />
+          <CalendarDayDialog
+            items={clickItems}
+            date={clickDate}
+            open={isClickPopupOpen}
+            onClose={() => setIsClickPopupOpen(false)}
+            mode="expense"
+            renderItem={(expense) => <ExpenseCard key={expense.id} expense={expense} />}
+          />
+        </>
+      )}
 
       {/* Add/Edit Dialog */}
       <Dialog open={drawerOpen} onOpenChange={(o) => { setDrawerOpen(o); if (!o) { setEditExpense(null); reset() } }}>
@@ -256,7 +363,7 @@ export default function ExpensesPage() {
               </div>
               <div className="space-y-1">
                 <Label>Tần suất</Label>
-                <Select defaultValue={editExpense?.frequency ?? 'monthly'} onValueChange={(v) => { setValue('frequency', v as Frequency); setFormFrequency(v as Frequency) }}>
+                <Select value={(watchFrequency || formFrequency) as Frequency} onValueChange={(v) => { setValue('frequency', v as Frequency); setFormFrequency(v as Frequency) }}>
                   <SelectTrigger id="expense-freq-select"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="one_time">Một lần</SelectItem>

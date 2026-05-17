@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -17,9 +17,15 @@ import { TypeBadge } from '@/components/common/StatusBadge'
 import { CurrencyDisplay } from '@/components/common/CurrencyDisplay'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmptyState } from '@/components/common/EmptyState'
+import { ViewToggle, type ViewMode } from '@/components/common/ViewToggle'
+import { GroupedOneTimeList } from '@/components/common/GroupedOneTimeList'
+import { MonthCalendar } from '@/components/common/MonthCalendar'
+import { CalendarHoverPopup } from '@/components/common/CalendarHoverPopup'
+import { CalendarDayDialog } from '@/components/common/CalendarDayDialog'
 import { incomesApi } from '@/api/incomes'
 import { useUIStore } from '@/store/uiStore'
 import { toast } from '@/hooks/useToast'
+import { buildDayMap } from '@/utils/calendarMapping'
 import type { Income, IncomeType, Frequency } from '@/types'
 
 const incomeTypeConfig: Record<IncomeType, { label: string; variant: 'blue' | 'purple' | 'teal' | 'green' | 'orange' | 'rose' | 'slate' }> = {
@@ -50,16 +56,44 @@ export default function IncomesPage() {
   const [editIncome, setEditIncome] = useState<Income | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [formFrequency, setFormFrequency] = useState<Frequency>('monthly')
+  const [view, setView] = useState<ViewMode>('list')
+  const [hoverDay, setHoverDay] = useState<number | null>(null)
+  const [hoverAnchor, setHoverAnchor] = useState<HTMLElement | null>(null)
+  const [hoverVisible, setHoverVisible] = useState(false)
+  const [clickDay, setClickDay] = useState<number | null>(null)
+  const [isClickPopupOpen, setIsClickPopupOpen] = useState(false)
+  const hoverShowTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hoverHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const { selectedPeriod } = useUIStore()
+  const [calendarYear, calendarMonth] = selectedPeriod.split('-').map(Number)
 
-  const { data: incomes = [], isLoading } = useQuery({
+  const { data: incomes = [], isLoading, isError } = useQuery({
     queryKey: ['incomes', selectedPeriod],
     queryFn: () => incomesApi.list({ current_month: selectedPeriod }),
   })
 
   const recurring = incomes.filter((i) => i.frequency !== 'one_time')
   const oneTime = incomes.filter((i) => i.frequency === 'one_time')
+  const dayMap = useMemo(
+    () => buildDayMap(incomes, calendarYear, calendarMonth),
+    [incomes, calendarYear, calendarMonth]
+  )
+  const hoverItems = hoverDay ? (dayMap[hoverDay] ?? []) : []
+  const clickItems = clickDay ? (dayMap[clickDay] ?? []) : []
+  const hoverDate = hoverDay
+    ? `${selectedPeriod}-${String(hoverDay).padStart(2, '0')}`
+    : `${selectedPeriod}-01`
+  const clickDate = clickDay
+    ? `${selectedPeriod}-${String(clickDay).padStart(2, '0')}`
+    : `${selectedPeriod}-01`
+
+  useEffect(() => {
+    return () => {
+      if (hoverShowTimer.current) clearTimeout(hoverShowTimer.current)
+      if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
+    }
+  }, [])
 
   const { register, handleSubmit, reset, setValue, watch, control, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -122,11 +156,40 @@ export default function IncomesPage() {
     }
 
     if (editIncome) {
-      const { transaction_date, ...updateData } = data
-      updateMutation.mutate({ id: editIncome.id, data: updateData })
+      updateMutation.mutate({ id: editIncome.id, data })
     } else {
       createMutation.mutate(data)
     }
+  }
+
+  const clearHoverHideTimer = () => {
+    if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
+  }
+
+  const hideHover = () => {
+    if (hoverShowTimer.current) clearTimeout(hoverShowTimer.current)
+    hoverHideTimer.current = setTimeout(() => {
+      setHoverVisible(false)
+      setHoverDay(null)
+      setHoverAnchor(null)
+    }, 200)
+  }
+
+  const handleDayHover = (day: number, _items: Income[], anchorEl: HTMLElement) => {
+    if (isClickPopupOpen) return
+    clearHoverHideTimer()
+    if (hoverShowTimer.current) clearTimeout(hoverShowTimer.current)
+    hoverShowTimer.current = setTimeout(() => {
+      setHoverDay(day)
+      setHoverAnchor(anchorEl)
+      setHoverVisible(true)
+    }, 150)
+  }
+
+  const handleDayClick = (day: number) => {
+    setHoverVisible(false)
+    setClickDay(day)
+    setIsClickPopupOpen(true)
   }
 
   const IncomeCard = ({ income }: { income: Income }) => {
@@ -191,35 +254,79 @@ export default function IncomesPage() {
           <h1 className="text-2xl font-bold">Thu Nhập</h1>
           <p className="text-sm text-muted-foreground">{incomes.length} nguồn</p>
         </div>
-        <Button onClick={openCreate} className="gap-2" id="incomes-add-btn">
-          <Plus className="h-4 w-4" /> Thêm Thu Nhập
-        </Button>
+        <div className="flex items-center gap-2">
+          <ViewToggle view={view} onChange={setView} />
+          <Button onClick={openCreate} className="gap-2" id="incomes-add-btn">
+            <Plus className="h-4 w-4" /> Thêm Thu Nhập
+          </Button>
+        </div>
       </div>
 
-      <Tabs defaultValue="recurring" id="incomes-tabs">
-        <TabsList>
-          <TabsTrigger value="recurring" id="tab-income-recurring">Định Kỳ ({recurring.length})</TabsTrigger>
-          <TabsTrigger value="onetime" id="tab-income-onetime">Một Lần ({oneTime.length})</TabsTrigger>
-        </TabsList>
-        <TabsContent value="recurring" className="mt-4">
-          {isLoading ? (
-            <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="skeleton h-20 rounded-xl" />)}</div>
-          ) : recurring.length === 0 ? (
-            <EmptyState icon={Wallet} title="Chưa có thu nhập định kỳ" description="Lương, thu nhập thụ động, freelance..." action={<Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" />Thêm ngay</Button>} />
-          ) : (
-            <div className="space-y-3">{recurring.map((i) => <IncomeCard key={i.id} income={i} />)}</div>
-          )}
-        </TabsContent>
-        <TabsContent value="onetime" className="mt-4">
-          {isLoading ? (
-            <div className="space-y-3">{[1, 2].map((i) => <div key={i} className="skeleton h-20 rounded-xl" />)}</div>
-          ) : oneTime.length === 0 ? (
-            <EmptyState icon={Wallet} title="Chưa có thu nhập một lần" description="Trading profit, bonus, freelance lẻ..." action={<Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" />Thêm ngay</Button>} />
-          ) : (
-            <div className="space-y-3">{oneTime.map((i) => <IncomeCard key={i.id} income={i} />)}</div>
-          )}
-        </TabsContent>
-      </Tabs>
+      {isError && (
+        <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-400">
+          Không thể tải dữ liệu. Vui lòng thử lại.
+        </div>
+      )}
+
+      {view === 'list' ? (
+        <Tabs defaultValue="recurring" id="incomes-tabs">
+          <TabsList>
+            <TabsTrigger value="recurring" id="tab-income-recurring">Định Kỳ ({recurring.length})</TabsTrigger>
+            <TabsTrigger value="onetime" id="tab-income-onetime">Một Lần ({oneTime.length})</TabsTrigger>
+          </TabsList>
+          <TabsContent value="recurring" className="mt-4">
+            {isLoading ? (
+              <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="skeleton h-20 rounded-xl" />)}</div>
+            ) : recurring.length === 0 ? (
+              <EmptyState icon={Wallet} title="Chưa có thu nhập định kỳ" description="Lương, thu nhập thụ động, freelance..." action={<Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" />Thêm ngay</Button>} />
+            ) : (
+              <div className="space-y-3">{recurring.map((i) => <IncomeCard key={i.id} income={i} />)}</div>
+            )}
+          </TabsContent>
+          <TabsContent value="onetime" className="mt-4">
+            {isLoading ? (
+              <div className="space-y-3">{[1, 2].map((i) => <div key={i} className="skeleton h-20 rounded-xl" />)}</div>
+            ) : oneTime.length === 0 ? (
+              <EmptyState icon={Wallet} title="Chưa có thu nhập một lần" description="Trading profit, bonus, freelance lẻ..." action={<Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" />Thêm ngay</Button>} />
+            ) : (
+              <GroupedOneTimeList items={oneTime} renderItem={(income) => <IncomeCard key={income.id} income={income} />} />
+            )}
+          </TabsContent>
+        </Tabs>
+      ) : isLoading ? (
+        <div className="skeleton h-[520px] rounded-lg" />
+      ) : incomes.length === 0 ? (
+        <EmptyState icon={Wallet} title="Chưa có thu nhập trong tháng" description="Thêm khoản thu để xem trên lịch" action={<Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" />Thêm ngay</Button>} />
+      ) : (
+        <>
+          <MonthCalendar
+            year={calendarYear}
+            month={calendarMonth}
+            dayMap={dayMap}
+            mode="income"
+            onDayClick={handleDayClick}
+            onDayHover={handleDayHover}
+            onDayHoverEnd={hideHover}
+          />
+          <CalendarHoverPopup
+            items={hoverItems}
+            date={hoverDate}
+            anchorEl={hoverAnchor}
+            visible={hoverVisible && !isClickPopupOpen}
+            mode="income"
+            onMouseEnter={clearHoverHideTimer}
+            onMouseLeave={hideHover}
+          />
+          <CalendarDayDialog
+            items={clickItems}
+            date={clickDate}
+            open={isClickPopupOpen}
+            onClose={() => setIsClickPopupOpen(false)}
+            mode="income"
+            renderItem={(income) => <IncomeCard key={income.id} income={income} />}
+          />
+        </>
+      )}
 
       <Dialog open={drawerOpen} onOpenChange={(o) => { setDrawerOpen(o); if (!o) { setEditIncome(null); reset() } }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
@@ -246,7 +353,7 @@ export default function IncomesPage() {
               </div>
               <div className="space-y-1">
                 <Label>Tần suất</Label>
-                <Select defaultValue={editIncome?.frequency ?? 'monthly'} onValueChange={(v) => { setValue('frequency', v as Frequency); setFormFrequency(v as Frequency) }}>
+                <Select value={(watchFrequency || formFrequency) as Frequency} onValueChange={(v) => { setValue('frequency', v as Frequency); setFormFrequency(v as Frequency) }}>
                   <SelectTrigger id="income-freq-select"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="one_time">Một lần</SelectItem>
