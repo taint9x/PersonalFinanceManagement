@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.api.v1 import auth, debts, expenses, incomes, transactions, dashboard, ai_analysis
-from app.api.v1 import monthly_overview, notifications
+from app.api.v1 import monthly_overview, notifications, personal_loans
 
 
 @asynccontextmanager
@@ -59,6 +59,7 @@ app.include_router(dashboard.router, prefix=PREFIX)
 app.include_router(ai_analysis.router, prefix=PREFIX)
 app.include_router(monthly_overview.router, prefix=PREFIX)
 app.include_router(notifications.router, prefix=PREFIX)
+app.include_router(personal_loans.router, prefix=PREFIX)
 
 
 # ── Health check ──────────────────────────────────────────────────────────────

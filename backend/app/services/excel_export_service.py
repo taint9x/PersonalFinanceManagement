@@ -80,7 +80,7 @@ def generate_excel(data: MonthlyOverviewResponse, period_key: str) -> BytesIO:
     # ── Sheet 2: Nợ ──────────────────────────────────────────────────────────
     ws_debt = wb.create_sheet("Nợ")
     fill_d = _make_header_fill(SHEET_COLORS["debt"])
-    debt_headers = ["Tên", "Loại", "Số Tiền Trả/Tháng (₫)", "Còn Lại (₫)", "Ngày Đến Hạn", "Trạng Thái"]
+    debt_headers = ["Tên", "Loại", "Phân Loại", "Số Tiền Trả/Tháng (₫)", "Còn Lại (₫)", "Ngày Đến Hạn", "Trạng Thái"]
     for col_idx, h in enumerate(debt_headers, 1):
         cell = ws_debt.cell(row=1, column=col_idx, value=h)
         cell.font = HEADER_FONT
@@ -91,12 +91,19 @@ def generate_excel(data: MonthlyOverviewResponse, period_key: str) -> BytesIO:
     for row_idx, item in enumerate(debt_items, 2):
         ws_debt.cell(row=row_idx, column=1, value=item.name)
         ws_debt.cell(row=row_idx, column=2, value=item.category)
-        c_amt = ws_debt.cell(row=row_idx, column=3, value=_fmt_vnd(item.amount))
+        # Loại column: distinguish personal loans from monthly installments
+        loan_type_label = (
+            "Vay cá nhân" if getattr(item, "debt_category", None) == "personal_lump_sum"
+            else "Trả hàng tháng"
+        )
+        ws_debt.cell(row=row_idx, column=3, value=loan_type_label)
+        c_amt = ws_debt.cell(row=row_idx, column=4, value=_fmt_vnd(item.amount))
         c_amt.alignment = Alignment(horizontal="right")
-        c_rem = ws_debt.cell(row=row_idx, column=4, value=_fmt_vnd(item.remaining_amount or "0"))
+        c_rem = ws_debt.cell(row=row_idx, column=5, value=_fmt_vnd(item.remaining_amount or "0"))
         c_rem.alignment = Alignment(horizontal="right")
-        ws_debt.cell(row=row_idx, column=5, value=item.due_day or "")
-        ws_debt.cell(row=row_idx, column=6, value="✅ Đã Trả" if item.is_paid else "❌ Chưa Trả")
+        ws_debt.cell(row=row_idx, column=6, value=item.due_day or "")
+        ws_debt.cell(row=row_idx, column=7, value="✅ Đã Trả" if item.is_paid else "❌ Chưa Trả")
+
 
     _auto_width(ws_debt)
 

@@ -8,17 +8,17 @@ GET  /api/v1/monthly-overview/export/excel — StreamingResponse .xlsx
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_cache, get_current_user
 from app.core.database import get_db
-from app.models.debt import Debt
+from app.models.debt import Debt, DebtCategory
 from app.models.expense import Expense
 from app.models.monthly_payment_record import (
     MonthlyPaymentRecord,
@@ -26,6 +26,7 @@ from app.models.monthly_payment_record import (
     MonthlyPaymentStatus,
 )
 from app.models.user import User
+from app.schemas.debt import AddPersonalLoansPayload
 from app.schemas.monthly_overview import (
     MarkPaymentPayload,
     MonthlyOverviewResponse,
@@ -130,6 +131,88 @@ async def export_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename=finance_{period}.xlsx"},
     )
+
+
+# ── POST /monthly-overview/add-personal-loans ────────────────────────────────
+
+@router.post("/add-personal-loans", response_model=List[PaymentRecordRead])
+async def add_personal_loans_to_overview(
+    payload: AddPersonalLoansPayload,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    cache: CacheService = Depends(get_cache),
+):
+    """
+    Batch add selected personal_lump_sum loans to the monthly overview.
+    Each debt_id gets an UPSERT into monthly_payment_records with status=paid.
+    Atomic: if any upsert fails, all are rolled back.
+    """
+    _validate_period(payload.period_key)
+
+    # Validate all debt_ids belong to current_user and are personal_lump_sum
+    debt_result = await db.execute(
+        select(Debt).where(
+            and_(
+                Debt.id.in_(payload.debt_ids),
+                Debt.user_id == current_user.id,
+                Debt.deleted_at.is_(None),
+            )
+        )
+    )
+    debts = {d.id: d for d in debt_result.scalars().all()}
+
+    # Check all requested IDs were found
+    for debt_id in payload.debt_ids:
+        if debt_id not in debts:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"detail": f"Debt {debt_id} not found or not owned by user", "code": "NOT_FOUND"},
+            )
+        if debts[debt_id].debt_category != DebtCategory.personal_lump_sum:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"detail": f"Debt {debt_id} is not a personal_lump_sum debt", "code": "WRONG_DEBT_CATEGORY"},
+            )
+
+    # Atomic batch UPSERT
+    now = datetime.now(timezone.utc)
+    records: List[MonthlyPaymentRecord] = []
+    for debt_id in payload.debt_ids:
+        new_id = uuid.uuid4()
+        stmt = (
+            pg_insert(MonthlyPaymentRecord)
+            .values(
+                id=new_id,
+                user_id=current_user.id,
+                source_type=MonthlyPaymentSourceType.debt,
+                source_id=debt_id,
+                period_key=payload.period_key,
+                status=MonthlyPaymentStatus.paid,
+                note=None,
+                marked_at=now,
+                created_at=now,
+                updated_at=now,
+            )
+            .on_conflict_do_update(
+                constraint="uq_monthly_payment_records_user_source_period",
+                set_={
+                    "status": MonthlyPaymentStatus.paid,
+                    "marked_at": now,
+                    "updated_at": now,
+                },
+            )
+            .returning(MonthlyPaymentRecord)
+        )
+        result = await db.execute(stmt)
+        records.append(result.scalar_one())
+
+    await db.flush()
+
+    # Invalidate caches
+    await cache.delete(f"monthly_overview:{current_user.id}:{payload.period_key}")
+    await cache.delete_pattern(f"personal_loans_available:{current_user.id}:*")
+
+    return records
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

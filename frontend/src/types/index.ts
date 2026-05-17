@@ -17,6 +17,7 @@ export interface AuthToken {
 // ========================
 export type DebtType = 'credit_loan' | 'credit_card' | 'personal_loan' | 'other'
 export type DebtStatus = 'active' | 'paid_off' | 'paused'
+export type DebtCategory = 'monthly_installment' | 'personal_lump_sum'
 
 export interface Debt {
   id: string
@@ -33,6 +34,14 @@ export interface Debt {
   notes: string | null
   created_at: string
   updated_at: string
+  // Personal loan fields
+  debt_category: DebtCategory
+  repay_amount: string | null      // Decimal string
+  borrow_date: string | null       // ISO date
+  repay_date: string | null        // ISO date
+  lender_name: string | null
+  is_fully_paid: boolean
+  actual_repaid_date: string | null
 }
 
 export interface CreateDebtRequest {
@@ -42,11 +51,17 @@ export interface CreateDebtRequest {
   remaining_amount: number
   interest_rate: number
   monthly_payment: number
-  due_day: number
+  due_day?: number
   start_date?: string
   end_date?: string
   status?: DebtStatus
   notes?: string
+  // Personal loan fields
+  debt_category?: DebtCategory
+  repay_amount?: number
+  borrow_date?: string
+  repay_date?: string
+  lender_name?: string
 }
 
 export type UpdateDebtRequest = Partial<CreateDebtRequest>

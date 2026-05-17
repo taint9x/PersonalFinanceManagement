@@ -1,3 +1,5 @@
+import type { DebtCategory } from './index'
+
 export type SourceType = 'debt' | 'expense' | 'income'
 
 export interface OverviewItem {
@@ -16,6 +18,11 @@ export interface OverviewItem {
   is_paid?: boolean
   payment_record_id?: string | null
   marked_at?: string | null
+
+  // Personal loan fields (present when source_type = 'debt' and debt_category = 'personal_lump_sum')
+  debt_category?: DebtCategory
+  is_fully_paid?: boolean
+  lender_name?: string | null
 }
 
 export interface OverviewSummary {
@@ -50,4 +57,20 @@ export interface PaymentRecord {
   note?: string | null
   marked_at?: string | null
   updated_at: string
+}
+
+export interface PersonalLoanAvailable {
+  id: string
+  name: string                    // loan label
+  lender_name: string
+  principal_amount: string        // borrowed amount (Decimal string)
+  repay_amount: string            // to repay (Decimal string)
+  borrow_date: string             // ISO date
+  repay_date: string | null
+  already_in_overview: boolean    // already has monthly_payment_record this period
+}
+
+export interface AddPersonalLoansPayload {
+  period_key: string
+  debt_ids: string[]
 }

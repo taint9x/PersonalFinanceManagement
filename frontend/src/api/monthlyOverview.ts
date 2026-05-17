@@ -3,6 +3,8 @@ import type {
   MonthlyOverviewResponse,
   MarkPaymentPayload,
   PaymentRecord,
+  PersonalLoanAvailable,
+  AddPersonalLoansPayload,
 } from '@/types/monthlyOverview'
 
 export const monthlyOverviewApi = {
@@ -52,5 +54,28 @@ export const monthlyOverviewApi = {
       responseType: 'blob',
     })
     return response.data as Blob
+  },
+
+  /**
+   * Get personal loans available to be added to a period's overview.
+   * Returns loans not yet fully paid and active in the given period.
+   */
+  getPersonalLoansAvailable: async (period: string): Promise<PersonalLoanAvailable[]> => {
+    const response = await apiClient.get<PersonalLoanAvailable[]>(
+      '/personal-loans/available',
+      { params: { period } }
+    )
+    return response.data
+  },
+
+  /**
+   * Batch add personal loans to the monthly overview + auto-mark as paid.
+   */
+  addPersonalLoansToOverview: async (payload: AddPersonalLoansPayload): Promise<PaymentRecord[]> => {
+    const response = await apiClient.post<PaymentRecord[]>(
+      '/monthly-overview/add-personal-loans',
+      payload
+    )
+    return response.data
   },
 }

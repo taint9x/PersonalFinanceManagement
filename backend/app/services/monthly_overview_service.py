@@ -11,7 +11,7 @@ from typing import Optional
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.debt import Debt, DebtStatus
+from app.models.debt import Debt, DebtStatus, DebtCategory
 from app.models.expense import Expense, Frequency as ExpFreq
 from app.models.income import Income, IncomeFrequency
 from app.models.monthly_payment_record import (
@@ -51,7 +51,7 @@ async def get_monthly_overview(
 
     items: list[OverviewItem] = []
 
-    # ── Debts (always recurring, active status) ───────────────────────────────
+    # ── Debts (monthly_installment only, active status) ─────────────────────
     if type_filter in ("all", "debt"):
         debt_result = await db.execute(
             select(Debt).where(
@@ -59,6 +59,7 @@ async def get_monthly_overview(
                     Debt.user_id == user_id,
                     Debt.deleted_at.is_(None),
                     Debt.status == DebtStatus.active,
+                    Debt.debt_category == DebtCategory.monthly_installment,
                     (Debt.start_date.is_(None)) | (Debt.start_date <= period_end),
                     (Debt.end_date.is_(None)) | (Debt.end_date >= period_start),
                 )
@@ -103,8 +104,69 @@ async def get_monthly_overview(
                         if pr and pr.marked_at
                         else None
                     ),
+                    debt_category=debt.debt_category.value,
                 )
             )
+
+        # ── Also include personal_lump_sum debts that have payment records for this period
+        personal_pr_result = await db.execute(
+            select(MonthlyPaymentRecord).where(
+                and_(
+                    MonthlyPaymentRecord.user_id == user_id,
+                    MonthlyPaymentRecord.source_type == MonthlyPaymentSourceType.debt,
+                    MonthlyPaymentRecord.period_key == period_key,
+                )
+            )
+        )
+        personal_prs = personal_pr_result.scalars().all()
+
+        if personal_prs:
+            # Collect IDs of personal_lump_sum debts referenced by payment records
+            personal_debt_ids = [pr.source_id for pr in personal_prs]
+            personal_debt_result = await db.execute(
+                select(Debt).where(
+                    and_(
+                        Debt.id.in_(personal_debt_ids),
+                        Debt.user_id == user_id,
+                        Debt.deleted_at.is_(None),
+                        Debt.debt_category == DebtCategory.personal_lump_sum,
+                    )
+                )
+            )
+            personal_debts = {d.id: d for d in personal_debt_result.scalars().all()}
+            personal_pr_map = {pr.source_id: pr for pr in personal_prs}
+
+            # Only include those not already in the main debt list
+            existing_ids = {d.id for d in debts}
+            for debt_id, debt in personal_debts.items():
+                if debt_id in existing_ids:
+                    continue
+                pr = personal_pr_map.get(debt_id)
+                if not pr:
+                    continue
+                is_paid = pr.status == MonthlyPaymentStatus.paid
+                # Amount for personal loan = repay_amount (what they owe to repay)
+                amount = str(debt.repay_amount) if debt.repay_amount is not None else str(debt.principal_amount)
+                items.append(
+                    OverviewItem(
+                        id=str(debt.id),
+                        source_type="debt",
+                        name=debt.name,
+                        amount=amount,
+                        frequency="one_time",
+                        category=debt.debt_type.value,
+                        is_paid=is_paid,
+                        payment_record_id=str(pr.id) if pr else None,
+                        marked_at=(
+                            pr.marked_at.astimezone(timezone.utc).isoformat()
+                            if pr and pr.marked_at
+                            else None
+                        ),
+                        debt_category=debt.debt_category.value,
+                        is_fully_paid=debt.is_fully_paid,
+                        lender_name=debt.lender_name,
+                    )
+                )
 
     # ── Expenses ──────────────────────────────────────────────────────────────
     if type_filter in ("all", "expense"):

@@ -94,11 +94,23 @@ export function OverviewItemRow({ item, period }: Props) {
           <Icon className="h-4 w-4" />
         </div>
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-foreground">{item.name}</p>
+          <div className="flex items-center gap-2">
+            <p className="truncate text-sm font-medium text-foreground">{item.name}</p>
+            {item.debt_category === 'personal_lump_sum' && (
+              <span className="inline-flex flex-shrink-0 items-center rounded-full bg-purple-500/15 border border-purple-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-purple-400">
+                Vay CN
+              </span>
+            )}
+          </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-            <span className="capitalize">{item.category.replace(/_/g, ' ')}</span>
+            {item.debt_category === 'personal_lump_sum' && item.lender_name && (
+              <span className="font-medium text-foreground/70">{item.lender_name}</span>
+            )}
+            {item.debt_category !== 'personal_lump_sum' && (
+              <span className="capitalize">{item.category.replace(/_/g, ' ')}</span>
+            )}
             {item.source_type !== 'debt' && <span>· {freqLabel}</span>}
-            {item.source_type === 'debt' && item.due_day && (
+            {item.source_type === 'debt' && item.debt_category !== 'personal_lump_sum' && item.due_day && (
               <span>· Đến hạn: ngày {item.due_day}</span>
             )}
             {remaining !== null && (
