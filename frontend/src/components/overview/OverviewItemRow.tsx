@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, Circle, Loader2, CreditCard, ShoppingCart, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -43,6 +43,11 @@ export function OverviewItemRow({ item, period }: Props) {
 
   // Local optimistic paid state
   const [isPaid, setIsPaid] = useState<boolean>(item.is_paid ?? false)
+
+  // Sync state with prop updates
+  useEffect(() => {
+    setIsPaid(item.is_paid ?? false)
+  }, [item.is_paid])
 
   const mutation = useMutation({
     mutationFn: (payload: MarkPaymentPayload) =>

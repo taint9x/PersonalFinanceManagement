@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { CalendarRange, HandCoins } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { CalendarRange, HandCoins, Loader2, Circle, CheckCircle2 } from 'lucide-react'
+import { toast } from '@/hooks/useToast'
+import { cn } from '@/lib/utils'
 import { MonthPicker } from '@/components/common/MonthPicker'
 import { useUIStore } from '@/store/uiStore'
 import { monthlyOverviewApi } from '@/api/monthlyOverview'
@@ -37,6 +39,39 @@ function SectionHeader({ label }: { label: string }) {
 
 export default function MonthlyOverviewPage() {
   const { selectedPeriod } = useUIStore()
+  const queryClient = useQueryClient()
+  const [isBatchUpdating, setIsBatchUpdating] = useState(false)
+
+  const handleToggleAllOneTimeExpenses = async (oneTimeExpenses: OverviewItem[], markAsPaid: boolean) => {
+    setIsBatchUpdating(true)
+    try {
+      await Promise.all(
+        oneTimeExpenses.map((item) => {
+          const payload = {
+            source_type: 'expense' as const,
+            source_id: item.id,
+            period_key: selectedPeriod,
+          }
+          return markAsPaid
+            ? monthlyOverviewApi.markAsPaid(payload)
+            : monthlyOverviewApi.markAsUnpaid(payload)
+        })
+      )
+      toast({
+        title: markAsPaid ? 'Đã đánh dấu tất cả là Đã Chi' : 'Đã bỏ đánh dấu tất cả',
+        variant: 'default',
+      })
+    } catch (error) {
+      toast({
+        title: 'Không thể cập nhật trạng thái. Vui lòng thử lại.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsBatchUpdating(false)
+      queryClient.invalidateQueries({ queryKey: ['monthly-overview', selectedPeriod] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] })
+    }
+  }
   const [activeFilter, setActiveFilter] = useState<FilterType>('all')
   const [personalLoanPopupOpen, setPersonalLoanPopupOpen] = useState(false)
   const [view, setView] = useState<ViewMode>('list')
@@ -264,6 +299,38 @@ export default function MonthlyOverviewPage() {
                 renderItem={(item) => (
                   <OverviewItemRow key={item.id} item={item} period={selectedPeriod} />
                 )}
+                headerActions={
+                  type === 'expense' && items.filter((item) => item.frequency === 'one_time').length > 0 && (
+                    <button
+                      disabled={isBatchUpdating}
+                      onClick={() => {
+                        const oneTimeExps = items.filter((item) => item.frequency === 'one_time');
+                        const anyUnpaid = oneTimeExps.some(i => !i.is_paid);
+                        handleToggleAllOneTimeExpenses(oneTimeExps, anyUnpaid);
+                      }}
+                      className={cn(
+                        'flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-all duration-150',
+                        items.filter((item) => item.frequency === 'one_time').every(i => i.is_paid)
+                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
+                          : 'border border-border text-muted-foreground hover:bg-accent hover:text-foreground',
+                        isBatchUpdating && 'cursor-not-allowed'
+                      )}
+                    >
+                      {isBatchUpdating ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : items.filter((item) => item.frequency === 'one_time').every(i => i.is_paid) ? (
+                        <CheckCircle2 className="h-3 w-3" />
+                      ) : (
+                        <Circle className="h-3 w-3" />
+                      )}
+                      {isBatchUpdating
+                        ? 'Đang xử lý...'
+                        : items.filter((item) => item.frequency === 'one_time').every(i => i.is_paid)
+                        ? '✓ Đã Chi Tất Cả'
+                        : 'Mark Đã Chi Tất Cả'}
+                    </button>
+                  )
+                }
               />
             </div>
           ))}

@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
@@ -38,6 +39,14 @@ class OverviewItem(BaseModel):
     is_fully_paid: Optional[bool] = None
     lender_name: Optional[str] = None
 
+    # Date and timing fields
+    transaction_date: Optional[str] = None
+    start_date: Optional[str] = None
+    billing_day: Optional[int] = None
+    payment_day: Optional[int] = None
+    borrow_date: Optional[str] = None
+    created_at: Optional[str] = None
+
 
 class MonthlyOverviewResponse(BaseModel):
     period: str
@@ -60,8 +69,8 @@ class PaymentRecordRead(BaseModel):
     period_key: str
     status: MonthlyPaymentStatus
     note: Optional[str] = None
-    marked_at: Optional[str] = None
-    updated_at: str
+    marked_at: Optional[datetime] = None
+    updated_at: datetime
 
     model_config = {"from_attributes": True}
 

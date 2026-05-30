@@ -24,7 +24,9 @@ from app.schemas.monthly_overview import (
     OverviewItem,
     OverviewSummary,
 )
+import logging
 
+logger = logging.getLogger("app")
 
 def _parse_period(period_key: str):
     """Return (year, month) from 'YYYY-MM'."""
@@ -105,6 +107,8 @@ async def get_monthly_overview(
                         else None
                     ),
                     debt_category=debt.debt_category.value,
+                    start_date=debt.start_date.isoformat() if debt.start_date else None,
+                    created_at=debt.created_at.astimezone(timezone.utc).isoformat() if debt.created_at else None,
                 )
             )
 
@@ -165,6 +169,9 @@ async def get_monthly_overview(
                         debt_category=debt.debt_category.value,
                         is_fully_paid=debt.is_fully_paid,
                         lender_name=debt.lender_name,
+                        borrow_date=debt.borrow_date.isoformat() if debt.borrow_date else None,
+                        transaction_date=debt.borrow_date.isoformat() if debt.borrow_date else None,
+                        created_at=debt.created_at.astimezone(timezone.utc).isoformat() if debt.created_at else None,
                     )
                 )
 
@@ -233,6 +240,10 @@ async def get_monthly_overview(
                         if pr and pr.marked_at
                         else None
                     ),
+                    transaction_date=exp.transaction_date.isoformat() if exp.transaction_date else None,
+                    start_date=exp.start_date.isoformat() if exp.start_date else None,
+                    billing_day=exp.billing_day,
+                    created_at=exp.created_at.astimezone(timezone.utc).isoformat() if exp.created_at else None,
                 )
             )
 
@@ -276,6 +287,10 @@ async def get_monthly_overview(
                     amount=str(inc.amount),
                     frequency=inc.frequency.value,
                     category=inc.income_type.value,
+                    transaction_date=inc.transaction_date.isoformat() if inc.transaction_date else None,
+                    start_date=inc.start_date.isoformat() if inc.start_date else None,
+                    payment_day=inc.payment_day,
+                    created_at=inc.created_at.astimezone(timezone.utc).isoformat() if inc.created_at else None,
                 )
             )
 

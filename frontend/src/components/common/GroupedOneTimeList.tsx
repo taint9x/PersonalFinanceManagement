@@ -9,6 +9,7 @@ import type { CalendarItemLike } from '@/utils/calendarMapping'
 interface GroupedOneTimeListProps<T extends CalendarItemLike> {
   items: T[]
   renderItem: (item: T) => ReactNode
+  headerActions?: ReactNode
 }
 
 function dateKey(value?: string | null): string {
@@ -25,6 +26,7 @@ function formatGroupDate(key: string): string {
 export function GroupedOneTimeList<T extends CalendarItemLike>({
   items,
   renderItem,
+  headerActions,
 }: GroupedOneTimeListProps<T>) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
@@ -33,7 +35,7 @@ export function GroupedOneTimeList<T extends CalendarItemLike>({
     items
       .filter((item) => item.frequency === 'one_time')
       .forEach((item) => {
-        const key = dateKey(item.transaction_date)
+        const key = dateKey(item.transaction_date || item.borrow_date)
         if (!key) return
         grouped.set(key, [...(grouped.get(key) ?? []), item])
       })
@@ -62,22 +64,29 @@ export function GroupedOneTimeList<T extends CalendarItemLike>({
 
   return (
     <div className="space-y-3">
-      {groups.length > 1 && (
-        <div className="flex justify-end gap-3 text-xs">
-          <button
-            type="button"
-            className="font-medium text-primary hover:underline"
-            onClick={() => setCollapsedGroups(new Set(groups.map((group) => group.date)))}
-          >
-            Thu gọn tất cả
-          </button>
-          <button
-            type="button"
-            className="font-medium text-primary hover:underline"
-            onClick={() => setCollapsedGroups(new Set())}
-          >
-            Mở rộng tất cả
-          </button>
+      {(headerActions || groups.length > 1) && (
+        <div className="flex items-center justify-between gap-3 text-xs">
+          <div>
+            {headerActions}
+          </div>
+          {groups.length > 1 && (
+            <div className="flex gap-3">
+              <button
+                type="button"
+                className="font-medium text-primary hover:underline"
+                onClick={() => setCollapsedGroups(new Set(groups.map((group) => group.date)))}
+              >
+                Thu gọn tất cả
+              </button>
+              <button
+                type="button"
+                className="font-medium text-primary hover:underline"
+                onClick={() => setCollapsedGroups(new Set())}
+              >
+                Mở rộng tất cả
+              </button>
+            </div>
+          )}
         </div>
       )}
       {groups.map((group) => {
