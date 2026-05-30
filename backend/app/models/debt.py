@@ -1,11 +1,11 @@
 import enum
 import uuid
 
-from sqlalchemy import Enum, ForeignKey, Integer, Numeric, String, Text, Date
+from sqlalchemy import Boolean, Enum, ForeignKey, Integer, Numeric, String, Text, Date, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from decimal import Decimal
-from datetime import date
+from datetime import date, datetime
 
 from app.models.base import Base, TimestampMixin
 
@@ -21,6 +21,11 @@ class DebtStatus(str, enum.Enum):
     active = "active"
     paid_off = "paid_off"
     paused = "paused"
+
+
+class DebtCategory(str, enum.Enum):
+    monthly_installment = "monthly_installment"
+    personal_lump_sum = "personal_lump_sum"
 
 
 class Debt(Base, TimestampMixin):
@@ -43,3 +48,18 @@ class Debt(Base, TimestampMixin):
     )
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="VND")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ── Personal loan fields (personal_lump_sum category) ─────────────────────
+    debt_category: Mapped[DebtCategory] = mapped_column(
+        Enum(DebtCategory, name="debt_category_enum", create_type=False),
+        nullable=False,
+        default=DebtCategory.monthly_installment,
+    )
+    repay_amount: Mapped[Decimal | None] = mapped_column(Numeric(15, 2), nullable=True)
+    borrow_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    repay_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    lender_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_fully_paid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    actual_repaid_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

@@ -38,3 +38,22 @@
 **Rationale**:
 - **Environment Parity**: Ensures the app runs exactly the same on dev, staging, and production.
 - **Simplified Setup**: One command to orchestrate multiple services (DB, Redis, Backend, Frontend).
+
+## Excel Export: openpyxl
+**Choice**: openpyxl
+**Rationale**:
+- **Server-side**: All formatting is done in Python, no client-side libraries needed.
+- **Streaming**: Works with `StreamingResponse` for memory-efficient large exports.
+
+## Email: aiosmtplib + Jinja2
+**Choice**: aiosmtplib for async SMTP, Jinja2 for HTML templates
+**Rationale**:
+- **Async**: Fits FastAPI's async architecture without blocking the event loop.
+- **Jinja2**: Powerful templating already widely used in Python web stacks.
+
+## Scheduler: APScheduler
+**Choice**: APScheduler (AsyncIOScheduler)
+**Rationale**:
+- **In-process**: Runs inside the existing backend container — no extra infra needed.
+- **Cron syntax**: Supports last-day-of-month triggers natively.
+- **Async-native**: Integrates cleanly with FastAPI's asyncio event loop.

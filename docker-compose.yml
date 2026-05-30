@@ -14,7 +14,7 @@ services:
     networks:
       - finance_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-financeapp} -d ${POSTGRES_DB:-finance_db}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-financeapp} -d ${POSTGRES_DB:-finance_db}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -23,13 +23,15 @@ services:
     image: redis:7-alpine
     container_name: finance_redis
     restart: always
+    ports:
+      - "6379:6379"
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
     networks:
       - finance_network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5

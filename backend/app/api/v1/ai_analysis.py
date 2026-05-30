@@ -114,23 +114,27 @@ async def generate_analysis_route(
             detail={"detail": "OpenRouter unavailable", "code": "AI_SERVICE_ERROR"},
         ) from exc
 
-    # Soft-delete old record if forcing
+    # Update the existing row when forcing. The database enforces one analysis
+    # per (period_key, user_id), so regenerating must upsert instead of insert.
     if existing and force:
-        from datetime import datetime, timezone
-        existing.deleted_at = datetime.now(timezone.utc)
+        existing.prompt_used = prompt_used
+        existing.analysis_text = analysis_text
+        existing.model_used = model_used
+        existing.token_usage = token_usage
         await db.flush()
-
-    # Save new record scoped to this user
-    record = AiAnalysis(
-        user_id=current_user.id,
-        period_key=period,
-        prompt_used=prompt_used,
-        analysis_text=analysis_text,
-        model_used=model_used,
-        token_usage=token_usage,
-    )
-    db.add(record)
-    await db.flush()
+        record = existing
+    else:
+        # Save new record scoped to this user
+        record = AiAnalysis(
+            user_id=current_user.id,
+            period_key=period,
+            prompt_used=prompt_used,
+            analysis_text=analysis_text,
+            model_used=model_used,
+            token_usage=token_usage,
+        )
+        db.add(record)
+        await db.flush()
 
     # Cache it (scoped per user)
     cache_key = f"ai_analysis:{current_user.id}:{period}"

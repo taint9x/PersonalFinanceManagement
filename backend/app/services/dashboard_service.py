@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.debt import Debt, DebtStatus
+from app.models.debt import Debt, DebtStatus, DebtCategory
 from app.models.expense import Expense, Frequency as ExpFreq
 from app.models.income import Income, IncomeFrequency
 
@@ -128,13 +128,14 @@ async def compute_monthly_summary(
         elif tx.source_type == SourceType.expense:
             total_expense += tx.amount
 
-    # ── Debts ─────────────────────────────────────────────────────────────────
+    # ── Debts (monthly_installment only — personal_lump_sum excluded from total_debt_payment) ───
     debt_result = await db.execute(
         select(Debt).where(
             and_(
                 Debt.user_id == user_id,
                 Debt.deleted_at.is_(None),
                 Debt.status == DebtStatus.active,
+                Debt.debt_category == DebtCategory.monthly_installment,
             )
         )
     )

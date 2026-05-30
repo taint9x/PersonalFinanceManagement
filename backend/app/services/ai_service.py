@@ -1,9 +1,15 @@
+import logging
+import time
 from typing import Any, Dict, Tuple
 
 import httpx
 
 from app.core.config import settings
 from app.schemas.dashboard import MonthlySummary
+
+# Uvicorn configures this logger to write to stdout/stderr in the container,
+# so these lines show up in `docker logs finance_backend`.
+logger = logging.getLogger("app.ai_services")
 
 
 def _build_prompt(period_key: str, summary: MonthlySummary, prev_summary: MonthlySummary | None) -> str:
@@ -81,20 +87,78 @@ async def generate_analysis(
         "model": settings.OPENROUTER_MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.7,
-        "max_tokens": 2048,
+        "max_tokens": 2048*10,
     }
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(
-            f"{settings.OPENROUTER_BASE_URL}/chat/completions",
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
+    url = f"{settings.OPENROUTER_BASE_URL}/chat/completions"
+    started_at = time.perf_counter()
+
+    logger.info(
+        "OpenRouter request started period=%s model=%s base_url=%s prompt_chars=%d",
+        period_key,
+        settings.OPENROUTER_MODEL,
+        settings.OPENROUTER_BASE_URL,
+        len(prompt),
+    )
+    logger.info("OpenRouter request prompt period=%s prompt=%r", period_key, prompt)
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        try:
+            response = await client.post(url, headers=headers, json=payload)
+            elapsed_ms = (time.perf_counter() - started_at) * 1000
+            logger.info(
+                "OpenRouter response received period=%s status_code=%s elapsed_ms=%.2f response_chars=%d",
+                period_key,
+                response.status_code,
+                elapsed_ms,
+                len(response.text),
+            )
+            logger.info(
+                "OpenRouter raw response period=%s status_code=%s body=%s",
+                period_key,
+                response.status_code,
+                response.text,
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            elapsed_ms = (time.perf_counter() - started_at) * 1000
+            logger.error(
+                "OpenRouter HTTP error period=%s status_code=%s elapsed_ms=%.2f response_body=%s",
+                period_key,
+                exc.response.status_code,
+                elapsed_ms,
+                exc.response.text,
+                exc_info=True,
+            )
+            raise
+        except httpx.RequestError as exc:
+            elapsed_ms = (time.perf_counter() - started_at) * 1000
+            logger.error(
+                "OpenRouter request failed period=%s elapsed_ms=%.2f error=%s",
+                period_key,
+                elapsed_ms,
+                str(exc),
+                exc_info=True,
+            )
+            raise
 
     data = response.json()
     analysis_text: str = data["choices"][0]["message"]["content"]
     model_used: str = data.get("model", settings.OPENROUTER_MODEL)
     token_usage: Dict[str, Any] = data.get("usage", {})
+
+    logger.info(
+        "OpenRouter analysis parsed period=%s requested_model=%s response_model=%s usage=%s analysis_chars=%d",
+        period_key,
+        settings.OPENROUTER_MODEL,
+        model_used,
+        token_usage,
+        len(analysis_text),
+    )
+    logger.info(
+        "OpenRouter analysis content period=%s analysis=%r",
+        period_key,
+        analysis_text,
+    )
 
     return analysis_text, model_used, token_usage, prompt

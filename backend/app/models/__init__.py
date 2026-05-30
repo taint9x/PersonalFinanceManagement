@@ -7,6 +7,8 @@ from app.models.income import Income
 from app.models.transaction import Transaction
 from app.models.monthly_snapshot import MonthlySnapshot
 from app.models.ai_analysis import AiAnalysis
+from app.models.monthly_payment_record import MonthlyPaymentRecord
+from app.models.notification_log import NotificationLog
 
 __all__ = [
     "Base",
@@ -19,4 +21,6 @@ __all__ = [
     "Transaction",
     "MonthlySnapshot",
     "AiAnalysis",
+    "MonthlyPaymentRecord",
+    "NotificationLog",
 ]

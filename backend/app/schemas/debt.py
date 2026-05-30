@@ -1,11 +1,11 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
+from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-from app.models.debt import DebtType, DebtStatus
+from app.models.debt import DebtType, DebtStatus, DebtCategory
 
 
 class DebtBase(BaseModel):
@@ -22,9 +22,30 @@ class DebtBase(BaseModel):
     currency: str = "VND"
     notes: Optional[str] = None
 
+    # Personal loan fields
+    debt_category: DebtCategory = DebtCategory.monthly_installment
+    repay_amount: Optional[Decimal] = Field(None, ge=0)
+    borrow_date: Optional[date] = None
+    repay_date: Optional[date] = None
+    lender_name: Optional[str] = Field(None, max_length=255)
+
 
 class DebtCreate(DebtBase):
-    pass
+    @model_validator(mode="after")
+    def validate_category_fields(self) -> "DebtCreate":
+        if self.debt_category == DebtCategory.personal_lump_sum:
+            if self.repay_amount is None:
+                raise ValueError("repay_amount is required for personal_lump_sum debts")
+            if self.borrow_date is None:
+                raise ValueError("borrow_date is required for personal_lump_sum debts")
+            if not self.lender_name:
+                raise ValueError("lender_name is required for personal_lump_sum debts")
+            if self.repay_date is not None and self.repay_date < self.borrow_date:
+                raise ValueError("repay_date must be >= borrow_date")
+        else:
+            # monthly_installment: existing required fields enforced by defaults
+            pass
+        return self
 
 
 class DebtUpdate(BaseModel):
@@ -41,8 +62,22 @@ class DebtUpdate(BaseModel):
     currency: Optional[str] = None
     notes: Optional[str] = None
 
+    # Personal loan fields (debt_category cannot be changed after creation)
+    repay_amount: Optional[Decimal] = Field(None, ge=0)
+    borrow_date: Optional[date] = None
+    repay_date: Optional[date] = None
+    lender_name: Optional[str] = Field(None, max_length=255)
+
 
 class DebtRead(DebtBase):
     id: uuid.UUID
+    is_fully_paid: bool = False
+    actual_repaid_date: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+
+class AddPersonalLoansPayload(BaseModel):
+    """Batch add personal loans to monthly overview."""
+    period_key: str = Field(..., description="YYYY-MM format")
+    debt_ids: List[uuid.UUID] = Field(..., min_length=1)

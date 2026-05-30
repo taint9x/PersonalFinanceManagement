@@ -1,5 +1,5 @@
 import apiClient from './client'
-import type { Debt, CreateDebtRequest, UpdateDebtRequest } from '@/types'
+import type { Debt, CreateDebtRequest, UpdateDebtRequest, DebtCategory } from '@/types'
 
 const parseDebt = (d: Debt): Debt => ({
   ...d,
@@ -10,9 +10,20 @@ const parseDebt = (d: Debt): Debt => ({
 })
 
 export const debtsApi = {
+  /** List all debts (optionally filtered by category) */
   list: async (current_month?: string): Promise<Debt[]> => {
     const params = current_month ? { current_month } : {}
     const response = await apiClient.get<Debt[]>('/debts', { params })
+    return response.data.map(parseDebt)
+  },
+
+  /** List debts filtered by category */
+  listByCategory: async (
+    category: 'monthly_installment' | 'personal_lump_sum' | 'all'
+  ): Promise<Debt[]> => {
+    const response = await apiClient.get<Debt[]>('/debts', {
+      params: { category },
+    })
     return response.data.map(parseDebt)
   },
 
@@ -33,5 +44,17 @@ export const debtsApi = {
 
   delete: async (id: string): Promise<void> => {
     await apiClient.delete(`/debts/${id}`)
+  },
+
+  /** Mark a personal_lump_sum debt as fully repaid */
+  markFullyPaid: async (id: string): Promise<Debt> => {
+    const response = await apiClient.post<Debt>(`/debts/${id}/mark-fully-paid`)
+    return parseDebt(response.data)
+  },
+
+  /** Revert full repayment for a personal_lump_sum debt */
+  unmarkFullyPaid: async (id: string): Promise<Debt> => {
+    const response = await apiClient.post<Debt>(`/debts/${id}/unmark-fully-paid`)
+    return parseDebt(response.data)
   },
 }

@@ -1,0 +1,357 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { CalendarRange, HandCoins, Loader2, Circle, CheckCircle2 } from 'lucide-react'
+import { toast } from '@/hooks/useToast'
+import { cn } from '@/lib/utils'
+import { MonthPicker } from '@/components/common/MonthPicker'
+import { useUIStore } from '@/store/uiStore'
+import { monthlyOverviewApi } from '@/api/monthlyOverview'
+import { OverviewSummaryBar } from '@/components/overview/OverviewSummaryBar'
+import { OverviewFilters } from '@/components/overview/OverviewFilters'
+import { OverviewItemRow } from '@/components/overview/OverviewItemRow'
+import { ExportButton } from '@/components/overview/ExportButton'
+import { PersonalLoanPopup } from '@/components/overview/PersonalLoanPopup'
+import { Button } from '@/components/ui/button'
+import { ViewToggle, type ViewMode } from '@/components/common/ViewToggle'
+import { GroupedOneTimeList } from '@/components/common/GroupedOneTimeList'
+import { MonthCalendar } from '@/components/common/MonthCalendar'
+import { CalendarHoverPopup } from '@/components/common/CalendarHoverPopup'
+import { CalendarDayDialog } from '@/components/common/CalendarDayDialog'
+import { buildDayMap } from '@/utils/calendarMapping'
+import type { OverviewItem } from '@/types/monthlyOverview'
+
+type FilterType = 'all' | 'debt' | 'expense' | 'income'
+
+const SECTION_LABELS: Record<string, string> = {
+  debt: 'NỢ PHẢI TRẢ',
+  expense: 'CHI TIÊU',
+  income: 'THU NHẬP',
+}
+
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 pt-2">
+      <span className="text-xs font-bold tracking-widest text-muted-foreground">{label}</span>
+      <div className="h-px flex-1 bg-border" />
+    </div>
+  )
+}
+
+export default function MonthlyOverviewPage() {
+  const { selectedPeriod } = useUIStore()
+  const queryClient = useQueryClient()
+  const [isBatchUpdating, setIsBatchUpdating] = useState(false)
+
+  const handleToggleAllOneTimeExpenses = async (oneTimeExpenses: OverviewItem[], markAsPaid: boolean) => {
+    setIsBatchUpdating(true)
+    try {
+      await Promise.all(
+        oneTimeExpenses.map((item) => {
+          const payload = {
+            source_type: 'expense' as const,
+            source_id: item.id,
+            period_key: selectedPeriod,
+          }
+          return markAsPaid
+            ? monthlyOverviewApi.markAsPaid(payload)
+            : monthlyOverviewApi.markAsUnpaid(payload)
+        })
+      )
+      toast({
+        title: markAsPaid ? 'Đã đánh dấu tất cả là Đã Chi' : 'Đã bỏ đánh dấu tất cả',
+        variant: 'default',
+      })
+    } catch (error) {
+      toast({
+        title: 'Không thể cập nhật trạng thái. Vui lòng thử lại.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsBatchUpdating(false)
+      queryClient.invalidateQueries({ queryKey: ['monthly-overview', selectedPeriod] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] })
+    }
+  }
+  const [activeFilter, setActiveFilter] = useState<FilterType>('all')
+  const [personalLoanPopupOpen, setPersonalLoanPopupOpen] = useState(false)
+  const [view, setView] = useState<ViewMode>('list')
+  const [hoverDay, setHoverDay] = useState<number | null>(null)
+  const [hoverAnchor, setHoverAnchor] = useState<HTMLElement | null>(null)
+  const [hoverVisible, setHoverVisible] = useState(false)
+  const [clickDay, setClickDay] = useState<number | null>(null)
+  const [isClickPopupOpen, setIsClickPopupOpen] = useState(false)
+  const hoverShowTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hoverHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [calendarYear, calendarMonth] = selectedPeriod.split('-').map(Number)
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['monthly-overview', selectedPeriod, 'all'],
+    queryFn: () => monthlyOverviewApi.getOverview(selectedPeriod, 'all'),
+    staleTime: 60 * 1000,
+  })
+
+  // Check if there are personal loans available for the button
+  const { data: availableLoans = [] } = useQuery({
+    queryKey: ['personal-loans-available', selectedPeriod],
+    queryFn: () => monthlyOverviewApi.getPersonalLoansAvailable(selectedPeriod),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // Front-end filtering (no re-fetch needed)
+  const filteredItems: OverviewItem[] =
+    activeFilter === 'all'
+      ? (data?.items ?? [])
+      : (data?.items ?? []).filter((i) => i.source_type === activeFilter)
+
+  // Grouped rendering
+  const groups: Array<{ type: string; items: OverviewItem[] }> = activeFilter === 'all'
+    ? ['debt', 'expense', 'income']
+        .map((type) => ({
+          type,
+          items: filteredItems.filter((i) => i.source_type === type),
+        }))
+        .filter((g) => g.items.length > 0)
+    : [{ type: activeFilter, items: filteredItems }]
+  const dayMap = useMemo(
+    () => buildDayMap(filteredItems, calendarYear, calendarMonth),
+    [filteredItems, calendarYear, calendarMonth]
+  )
+  const hoverItems = hoverDay ? (dayMap[hoverDay] ?? []) : []
+  const clickItems = clickDay ? (dayMap[clickDay] ?? []) : []
+  const hoverDate = hoverDay
+    ? `${selectedPeriod}-${String(hoverDay).padStart(2, '0')}`
+    : `${selectedPeriod}-01`
+  const clickDate = clickDay
+    ? `${selectedPeriod}-${String(clickDay).padStart(2, '0')}`
+    : `${selectedPeriod}-01`
+
+  const paidCount = data?.summary.paid_count ?? 0
+  const unpaidCount = data?.summary.unpaid_count ?? 0
+  const totalPayable = paidCount + unpaidCount
+
+  // Check if any personal loan items are in the current list
+  const hasPersonalLoanItems = filteredItems.some((i) => i.debt_category === 'personal_lump_sum')
+
+  // Period label for popup title (MM/YYYY)
+  const [year, month] = selectedPeriod.split('-')
+  const periodLabel = `${month}/${year}`
+
+  // The button shows only if there are loans available (including not-yet-added ones)
+  const showPersonalLoanBtn = availableLoans.length > 0
+
+  useEffect(() => {
+    return () => {
+      if (hoverShowTimer.current) clearTimeout(hoverShowTimer.current)
+      if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
+    }
+  }, [])
+
+  const clearHoverHideTimer = () => {
+    if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
+  }
+
+  const hideHover = () => {
+    if (hoverShowTimer.current) clearTimeout(hoverShowTimer.current)
+    hoverHideTimer.current = setTimeout(() => {
+      setHoverVisible(false)
+      setHoverDay(null)
+      setHoverAnchor(null)
+    }, 200)
+  }
+
+  const handleDayHover = (day: number, _items: OverviewItem[], anchorEl: HTMLElement) => {
+    if (isClickPopupOpen) return
+    clearHoverHideTimer()
+    if (hoverShowTimer.current) clearTimeout(hoverShowTimer.current)
+    hoverShowTimer.current = setTimeout(() => {
+      setHoverDay(day)
+      setHoverAnchor(anchorEl)
+      setHoverVisible(true)
+    }, 150)
+  }
+
+  const handleDayClick = (day: number) => {
+    setHoverVisible(false)
+    setClickDay(day)
+    setIsClickPopupOpen(true)
+  }
+
+  return (
+    <div className="space-y-5 animate-fade-in">
+      {/* Page Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
+            <CalendarRange className="h-6 w-6 text-primary" />
+            Tổng Quan Tháng
+          </h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Tổng hợp thu chi nợ trong tháng đã chọn
+          </p>
+        </div>
+        <MonthPicker />
+      </div>
+
+      {/* Summary Bar */}
+      <OverviewSummaryBar summary={data?.summary} loading={isLoading} />
+
+      {/* Filters */}
+      <OverviewFilters
+        activeFilter={activeFilter}
+        onFilterChange={setActiveFilter}
+        items={data?.items ?? []}
+      />
+
+      {/* Status row + Nợ Cá Nhân button + Export */}
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          {isLoading ? (
+            <span className="skeleton inline-block h-4 w-28 rounded" />
+          ) : (
+            <>
+              <span className="font-semibold text-foreground">{paidCount}</span>
+              /{totalPayable} đã xử lý
+            </>
+          )}
+        </p>
+        <div className="flex items-center gap-2">
+          <ViewToggle view={view} onChange={setView} />
+          {showPersonalLoanBtn && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPersonalLoanPopupOpen(true)}
+              id="add-personal-loan-btn"
+              className="gap-1.5 border-purple-500/40 text-purple-400 hover:bg-purple-500/10 hover:text-purple-300"
+            >
+              <HandCoins className="h-4 w-4" />
+              + Nợ Cá Nhân
+            </Button>
+          )}
+          <ExportButton period={selectedPeriod} />
+        </div>
+      </div>
+
+      {/* Item List */}
+      {isError && (
+        <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-400">
+          Không thể tải dữ liệu. Vui lòng thử lại.
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="skeleton h-16 rounded-lg" />
+          ))}
+        </div>
+      ) : filteredItems.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <CalendarRange className="mb-3 h-10 w-10 text-muted-foreground/40" />
+          <p className="text-sm font-medium text-muted-foreground">
+            Không có dữ liệu cho tháng này
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Hãy thêm khoản thu chi trong các tab tương ứng.
+          </p>
+        </div>
+      ) : view === 'calendar' ? (
+        <>
+          <MonthCalendar
+            year={calendarYear}
+            month={calendarMonth}
+            dayMap={dayMap}
+            mode="overview"
+            onDayClick={handleDayClick}
+            onDayHover={handleDayHover}
+            onDayHoverEnd={hideHover}
+          />
+          <CalendarHoverPopup
+            items={hoverItems}
+            date={hoverDate}
+            anchorEl={hoverAnchor}
+            visible={hoverVisible && !isClickPopupOpen}
+            mode="overview"
+            onMouseEnter={clearHoverHideTimer}
+            onMouseLeave={hideHover}
+          />
+          <CalendarDayDialog
+            items={clickItems}
+            date={clickDate}
+            open={isClickPopupOpen}
+            onClose={() => setIsClickPopupOpen(false)}
+            mode="overview"
+            renderItem={(item, index) => (
+              <OverviewItemRow key={`${item.id}-${index}`} item={item} period={selectedPeriod} />
+            )}
+          />
+        </>
+      ) : (
+        <div className="space-y-3">
+          {groups.map(({ type, items }) => (
+            <div key={type} className="space-y-2">
+              {activeFilter === 'all' && <SectionHeader label={SECTION_LABELS[type]} />}
+              {items.filter((item) => item.frequency !== 'one_time').map((item) => (
+                <OverviewItemRow key={item.id} item={item} period={selectedPeriod} />
+              ))}
+              <GroupedOneTimeList
+                items={items.filter((item) => item.frequency === 'one_time')}
+                renderItem={(item) => (
+                  <OverviewItemRow key={item.id} item={item} period={selectedPeriod} />
+                )}
+                headerActions={
+                  type === 'expense' && items.filter((item) => item.frequency === 'one_time').length > 0 && (
+                    <button
+                      disabled={isBatchUpdating}
+                      onClick={() => {
+                        const oneTimeExps = items.filter((item) => item.frequency === 'one_time');
+                        const anyUnpaid = oneTimeExps.some(i => !i.is_paid);
+                        handleToggleAllOneTimeExpenses(oneTimeExps, anyUnpaid);
+                      }}
+                      className={cn(
+                        'flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-all duration-150',
+                        items.filter((item) => item.frequency === 'one_time').every(i => i.is_paid)
+                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
+                          : 'border border-border text-muted-foreground hover:bg-accent hover:text-foreground',
+                        isBatchUpdating && 'cursor-not-allowed'
+                      )}
+                    >
+                      {isBatchUpdating ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : items.filter((item) => item.frequency === 'one_time').every(i => i.is_paid) ? (
+                        <CheckCircle2 className="h-3 w-3" />
+                      ) : (
+                        <Circle className="h-3 w-3" />
+                      )}
+                      {isBatchUpdating
+                        ? 'Đang xử lý...'
+                        : items.filter((item) => item.frequency === 'one_time').every(i => i.is_paid)
+                        ? '✓ Đã Chi Tất Cả'
+                        : 'Mark Đã Chi Tất Cả'}
+                    </button>
+                  )
+                }
+              />
+            </div>
+          ))}
+
+          {/* Legend for personal loan items */}
+          {hasPersonalLoanItems && (
+            <p className="text-xs text-muted-foreground pt-1">
+              <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/15 px-2 py-0.5 text-[10px] font-semibold text-purple-400 border border-purple-500/30 mr-1">Vay CN</span>
+              = Khoản vay cá nhân (trả 1 lần)
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Personal Loan Popup */}
+      <PersonalLoanPopup
+        open={personalLoanPopupOpen}
+        onOpenChange={setPersonalLoanPopupOpen}
+        period={selectedPeriod}
+        periodLabel={periodLabel}
+      />
+    </div>
+  )
+}

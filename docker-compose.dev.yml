@@ -14,7 +14,7 @@ services:
     networks:
       - finance_network_dev
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-financeapp} -d ${POSTGRES_DB:-finance_db}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-financeapp} -d ${POSTGRES_DB:-finance_db}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -31,58 +31,57 @@ services:
     networks:
       - finance_network_dev
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
+  # backend_dev:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: finance_backend_dev
+  #   ports:
+  #     - "8001:8000"
+  #   volumes:
+  #     - ./backend:/app
+  #   env_file:
+  #     - .env.dev
+  #   environment:
+  #     - APP_ENV=development
+  #     - POSTGRES_HOST=postgres_dev
+  #     - REDIS_HOST=redis_dev
+  #     - DATABASE_URL=postgresql+asyncpg://financeapp:changeme_secure_password@postgres_dev:5432/finance_db
+  #     - REDIS_URL=redis://redis_dev:6379/0
+  #   command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+  #   depends_on:
+  #     postgres_dev:
+  #       condition: service_healthy
+  #     redis_dev:
+  #       condition: service_healthy
+  #   networks:
+  #     - finance_network_dev
+  #   expose:
+  #     - 8001
 
-  backend_dev:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: finance_backend_dev
-    ports:
-      - "8001:8000"
-    volumes:
-      - ./backend:/app
-    env_file:
-      - .env.dev
-    environment:
-      - APP_ENV=development
-      - POSTGRES_HOST=postgres_dev
-      - REDIS_HOST=redis_dev
-      - DATABASE_URL=postgresql+asyncpg://financeapp:changeme_secure_password@postgres_dev:5432/finance_db
-      - REDIS_URL=redis://redis_dev:6379/0
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    depends_on:
-      postgres_dev:
-        condition: service_healthy
-      redis_dev:
-        condition: service_healthy
-    networks:
-      - finance_network_dev
-    expose:
-      - 8001
-
-  frontend_dev:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      target: builder
-    container_name: finance_frontend_dev
-    ports:
-      - "3001:3000"
-    environment:
-      - VITE_API_BASE_URL=/api/v1
-      - VITE_PROXY_TARGET=http://backend_dev:8000
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    command: npm run dev -- --host 0.0.0.0
-    depends_on:
-      - backend_dev
-    networks:
-      - finance_network_dev
+  # frontend_dev:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #     target: builder
+  #   container_name: finance_frontend_dev
+  #   ports:
+  #     - "3001:3000"
+  #   environment:
+  #     - VITE_API_BASE_URL=/api/v1
+  #     - VITE_PROXY_TARGET=http://backend_dev:8001
+  #   volumes:
+  #     - ./frontend:/app
+  #     - /app/node_modules
+  #   command: npm run dev -- --host 0.0.0.0
+  #   depends_on:
+  #     - backend_dev
+  #   networks:
+  #     - finance_network_dev
 
 networks:
   finance_network_dev:
